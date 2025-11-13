@@ -1,0 +1,243 @@
+version: '3.8'
+
+# ============================================================================
+# CashPilot AI - Masumi-Compliant Multi-Agent System
+# Docker Compose Configuration
+#
+# Services:
+# - API: FastAPI server with MIP-003 endpoints
+# - PostgreSQL: Database (optional, for production)
+# - Redis: Cache (optional, for production)
+# - Masumi Node: Masumi Network node (optional, for production)
+#
+# Quickstart:
+#   docker-compose up -d api
+#
+# Full stack:
+#   docker-compose up -d
+# ============================================================================
+
+services:
+  # ============================================================================
+  # Optional Services (for production)
+  # ============================================================================
+
+  # PostgreSQL Database (Optional)
+  postgres:
+    image: postgres:15-alpine
+    container_name: cashpilot_postgres
+    environment:
+      POSTGRES_DB: cashpilot
+      POSTGRES_USER: cashpilot_user
+      POSTGRES_PASSWORD: changeme_in_production
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cashpilot_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - full  # Only start with --profile full
+
+  # Redis Cache (Optional)
+  redis:
+    image: redis:7-alpine
+    container_name: cashpilot_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - full  # Only start with --profile full
+
+  # ============================================================================
+  # Main Service - CashPilot AI API (MIP-003 Compliant)
+  # ============================================================================
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: cashpilot_api
+    ports:
+      - "8000:8000"
+    environment:
+      # ========================================================================
+      # Masumi Network Configuration
+      # ========================================================================
+      MASUMI_NODE_URL: ${MASUMI_NODE_URL:-http://masumi-node:8080}
+      MASUMI_PAYMENT_SERVICE_URL: ${MASUMI_PAYMENT_SERVICE_URL:-http://masumi-node:8080/payment}
+      MASUMI_REGISTRY_SERVICE_URL: ${MASUMI_REGISTRY_SERVICE_URL:-http://masumi-node:8080/registry}
+      MASUMI_NETWORK: ${MASUMI_NETWORK:-preprod}
+
+      # Operational Mode
+      OPERATIONAL_MODE: ${OPERATIONAL_MODE:-simulation}
+      ENABLE_MIP003_VALIDATION: ${ENABLE_MIP003_VALIDATION:-True}
+      AUTO_REGISTER_AGENTS: ${AUTO_REGISTER_AGENTS:-True}
+
+      # ========================================================================
+      # Agent Wallets
+      # ========================================================================
+      MARKET_AGENT_WALLET_ID: ${MARKET_AGENT_WALLET_ID:-market_wallet_1}
+      MARKET_AGENT_WALLET_ADDRESS: ${MARKET_AGENT_WALLET_ADDRESS:-addr_test1...}
+      STRATEGY_AGENT_WALLET_ID: ${STRATEGY_AGENT_WALLET_ID:-strategy_wallet_1}
+      STRATEGY_AGENT_WALLET_ADDRESS: ${STRATEGY_AGENT_WALLET_ADDRESS:-addr_test1...}
+      RISK_AGENT_WALLET_ID: ${RISK_AGENT_WALLET_ID:-risk_wallet_1}
+      RISK_AGENT_WALLET_ADDRESS: ${RISK_AGENT_WALLET_ADDRESS:-addr_test1...}
+
+      # ========================================================================
+      # Cardano Blockchain
+      # ========================================================================
+      CARDANO_NETWORK: ${CARDANO_NETWORK:-preprod}
+      BLOCKFROST_PROJECT_ID: ${BLOCKFROST_PROJECT_ID:?BLOCKFROST_PROJECT_ID required}
+      BLOCKFROST_API_URL: ${BLOCKFROST_API_URL:-https://cardano-preprod.blockfrost.io/api/v0}
+
+      # ========================================================================
+      # AI/LLM Configuration (Groq - FREE!)
+      # ========================================================================
+      GROQ_API_KEY: ${GROQ_API_KEY:?GROQ_API_KEY required}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.1-70b-versatile}
+      GROQ_TEMPERATURE: ${GROQ_TEMPERATURE:-0.1}
+
+      # ========================================================================
+      # Payment Settings
+      # ========================================================================
+      PAYMENT_TIMEOUT_SECONDS: ${PAYMENT_TIMEOUT_SECONDS:-60}
+      PAYMENT_POLL_INTERVAL_SECONDS: ${PAYMENT_POLL_INTERVAL_SECONDS:-2}
+      PAYMENT_MAX_POLL_ATTEMPTS: ${PAYMENT_MAX_POLL_ATTEMPTS:-30}
+
+      # ========================================================================
+      # Agent Pricing (in ADA)
+      # ========================================================================
+      MARKET_AGENT_PRICE: ${MARKET_AGENT_PRICE:-0.01}
+      STRATEGY_AGENT_PRICE: ${STRATEGY_AGENT_PRICE:-0.05}
+      RISK_AGENT_PRICE: ${RISK_AGENT_PRICE:-0.02}
+
+      # ========================================================================
+      # Database (Optional)
+      # ========================================================================
+      DATABASE_URL: ${DATABASE_URL:-postgresql://cashpilot_user:changeme_in_production@postgres:5432/cashpilot}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      USE_DATABASE: ${USE_DATABASE:-False}
+
+      # ========================================================================
+      # API Server Configuration
+      # ========================================================================
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      API_WORKERS: ${API_WORKERS:-1}
+      DEBUG: ${DEBUG:-False}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      CORS_ALLOW_CREDENTIALS: ${CORS_ALLOW_CREDENTIALS:-true}
+
+      # ========================================================================
+      # Logging
+      # ========================================================================
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FORMAT: ${LOG_FORMAT:-text}
+      ENABLE_PERFORMANCE_LOGGING: ${ENABLE_PERFORMANCE_LOGGING:-True}
+
+      # ========================================================================
+      # DeFi Protocol APIs
+      # ========================================================================
+      MINSWAP_API_URL: ${MINSWAP_API_URL:-https://api.minswap.org}
+      SUNDAESWAP_API_URL: ${SUNDAESWAP_API_URL:-https://api.sundaeswap.finance}
+      LIQWID_API_URL: ${LIQWID_API_URL:-https://api.liqwid.finance}
+
+    volumes:
+      - ./logs:/app/logs
+      - ./.env:/app/.env:ro  # Mount .env file (read-only)
+
+    # Only depend on database if using --profile full
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+      redis:
+        condition: service_healthy
+        required: false
+
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers 1
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    restart: unless-stopped
+
+  # ============================================================================
+  # Masumi Node (Optional - For Production)
+  # ============================================================================
+  #
+  # Uncomment this section to run Masumi Node in Docker
+  # Required for OPERATIONAL_MODE=production
+  #
+  # More info: https://docs.masumi.network/documentation/how-to-guides/node-setup
+  # ============================================================================
+
+  masumi-node:
+    image: ghcr.io/masumi-network/masumi-node:latest  # Update with actual image
+    container_name: masumi_node
+    ports:
+      - "8080:8080"
+    environment:
+      MASUMI_NETWORK: ${MASUMI_NETWORK:-preprod}
+      CARDANO_NETWORK: ${CARDANO_NETWORK:-preprod}
+      BLOCKFROST_PROJECT_ID: ${BLOCKFROST_PROJECT_ID}
+    volumes:
+      - masumi_data:/data
+      - masumi_config:/config
+    profiles:
+      - masumi  # Only start with --profile masumi
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  masumi_data:
+    driver: local
+  masumi_config:
+    driver: local
+
+# ============================================================================
+# Usage Examples
+# ============================================================================
+#
+# Quickstart (API only, simulation mode):
+#   docker-compose up -d api
+#
+# With database and cache:
+#   docker-compose --profile full up -d
+#
+# With Masumi Node (production mode):
+#   docker-compose --profile masumi --profile full up -d
+#
+# Stop all services:
+#   docker-compose down
+#
+# View logs:
+#   docker-compose logs -f api
+#
+# Rebuild after code changes:
+#   docker-compose build api
+#   docker-compose up -d api
+#
+# ============================================================================
