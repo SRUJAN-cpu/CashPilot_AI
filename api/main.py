@@ -13,9 +13,11 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 
-from .routes import health, agents, portfolio, mip003
+from .routes import health, agents, portfolio, mip003, users, chat
 # Using simplified agents that work with current LangChain
 from agents.simple_agents import initialize_agents, get_agent
+# Supabase configuration
+from config.supabase_config import supabase_config
 
 # Load environment variables
 load_dotenv()
@@ -43,6 +45,16 @@ async def lifespan(app: FastAPI):
     if operational_mode == "simulation":
         logger.info("SIMULATION MODE: Payments will be auto-approved for testing")
         logger.info("To use real Masumi payments, set OPERATIONAL_MODE=production")
+
+    try:
+        # Verify Supabase connection
+        logger.info("Connecting to Supabase...")
+        if supabase_config.verify_connection():
+            logger.info("✓ Supabase connection successful")
+        else:
+            logger.warning("⚠ Supabase connection failed - check credentials in .env")
+    except Exception as e:
+        logger.warning(f"⚠ Supabase not configured: {e}")
 
     try:
         # Initialize agents with Groq API
@@ -104,6 +116,8 @@ app.add_middleware(
 
 # Include routers
 app.include_router(health.router, prefix="/health", tags=["Health"])
+app.include_router(users.router, prefix="/users", tags=["Users"])
+app.include_router(chat.router, prefix="/chat", tags=["Chat"])
 app.include_router(agents.router, prefix="/agents", tags=["Agents"])
 app.include_router(portfolio.router, prefix="/portfolio", tags=["Portfolio"])
 
@@ -113,14 +127,27 @@ app.include_router(mip003.router, tags=["MIP-003 Standard"])
 # Get the project root directory (one level up from api/)
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Serve the dashboard
+# Mount frontend static files
+app.mount("/frontend", StaticFiles(directory=str(BASE_DIR / "frontend")), name="frontend")
+
+# Serve the main dashboard (Conversational Chat Interface with Tailwind)
 @app.get("/dashboard")
 async def dashboard():
-    """Serve the interactive dashboard"""
-    dashboard_path = BASE_DIR / "dashboard.html"
+    """Serve the conversational chat interface"""
+    index_path = BASE_DIR / "frontend" / "index.html"
+    if index_path.exists():
+        return FileResponse(index_path)
+    raise HTTPException(status_code=404, detail="Dashboard not found")
+
+
+# Old dashboards (kept for reference)
+@app.get("/dashboard-old")
+async def dashboard_old():
+    """Serve the old static dashboard"""
+    dashboard_path = BASE_DIR / "frontend" / "dashboard.html"
     if dashboard_path.exists():
         return FileResponse(dashboard_path)
-    raise HTTPException(status_code=404, detail="Dashboard not found")
+    raise HTTPException(status_code=404, detail="Old dashboard not found")
 
 
 @app.get("/")

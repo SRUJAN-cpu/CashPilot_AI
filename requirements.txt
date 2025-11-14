@@ -14,16 +14,19 @@ python-multipart>=0.0.6
 # Data Validation & Models
 pydantic>=2.5.0
 pydantic-settings>=2.1.0
+email-validator>=2.0.0
 
 # Cardano Integration
 pycardano>=0.11.0
 blockfrost-python>=0.5.3
 
 # Database & Caching
-sqlalchemy>=2.0.0
-alembic>=1.13.0
+supabase>=2.3.0
 redis>=5.0.0
-psycopg2-binary>=2.9.9
+
+# Authentication
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
 
 # Utilities
 python-dotenv>=1.0.0
